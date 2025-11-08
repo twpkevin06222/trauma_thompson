@@ -1,0 +1,14 @@
+# COCO 2017 dataset http://cocodataset.org by Microsoft
+# Example usage: python train.py --data coco.yaml
+# parent
+# ├── yolov5
+# └── datasets
+#     └── coco  ← downloads here (20.1 GB)
+
+path: /home/kevinteng/Desktop/dataset/trauma_thompson_dataset/task2_hands/ultralytics_training # dataset root dir
+train: images/train
+val: images/val
+# Classes
+nc: 1
+names: 
+  0: hand
