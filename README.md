@@ -32,13 +32,18 @@ uv pip install requirements.txt
 Utilised [Ultralytics](https://docs.ultralytics.com/modes/track/) YOLOv11n for object detection training and infer using Ultralytics's object tracking method. The provided dataset consisted of annotations that are not suitable for training (refer to task2 subfolder EDA section for more info) and was subsequently removed from the training and validation set. <br> 
 For some results, the training results for single class object detection is not great.
 <p align="center">
-<img src="assets/task2_metrics.png" width=800, height=400>
+<img src="assets/task2_metrics.png" width=800, height=400><br>
+</p>
+<p align="center">
 <img src="assets/task2_example.gif" width=800, height=500>
 </p>
+
 
 ## Task 3 - Tools Detection
 Utilised Ultralytics framework YOLOv11n for quick prototyping of object detection training. Dataset spllits can refer to task3 subfolder EDA section.
 <p align="center">
-<img src="assets/task3_metrics.png" width=800, height=400>
+<img src="assets/task3_metrics.png" width=800, height=400><br>
+</p>
+<p align="center">
 <img src="assets/task3_example.gif" width=800, height=500>
 </p>
