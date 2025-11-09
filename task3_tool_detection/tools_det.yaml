@@ -1,0 +1,26 @@
+path: "/home/kevinteng/Desktop/dataset/trauma_thompson_dataset/task3_tools"  # Dataset root folder
+
+# Train and Test folder
+train: images/train
+val: images/val
+
+# Class
+names:
+    0: tourniquet
+    1: label
+    2: windlass
+    3: needle_case
+    4: wipe
+    5: tape
+    6: scissors
+    7: needle
+    8: catheter
+    9: kelly
+    10: scapel
+    11: tube
+    12: syringe
+    13: swab
+    14: hook
+    15: driver
+    16: stylet
+
