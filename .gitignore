@@ -1,0 +1,18 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+
+# YOLO generated files
+task2_hand_tracking/yolo11n.pt
+task3_tool_detection/yolo11n.pt
+
+# potential data files
+task1_action_recognition/annotations_train.csv
