@@ -5,7 +5,13 @@ import os
 from tqdm import tqdm
 from utils import get_model, VideoDataset, get_video_transform
 import mlflow
+from torch.amp import autocast, GradScaler
+import warnings
+import logging
+import time
 
+# ignore pytorch warning
+warnings.filterwarnings("ignore", category=UserWarning)
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--dataset_dir",
@@ -16,33 +22,54 @@ parser.add_argument(
 parser.add_argument("--save_dir", type=str, default="./outputs")
 parser.add_argument("--num_classes", type=int, default=124)
 parser.add_argument("--batch_size", type=int, default=32)
-parser.add_argument("--num_workers", type=int, default=4)
-parser.add_argument("--epochs", type=int, default=5)
-parser.add_argument("--epoch_chck_point", type=int, default=1)
-parser.add_argument("--learning_rate", type=float, default=1e-3)
-parser.add_argument("--test_only", action="store_true", help="Test minimal run")
+parser.add_argument(
+    "--num_workers", type=int, default=4, help="Number of CPU workers for data loading"
+)
+parser.add_argument(
+    "--epochs", type=int, default=5, help="Number of epochs for training"
+)
+parser.add_argument(
+    "--epoch_chck_point", type=int, default=1, help="Save checkpoint per N epochs"
+)
+parser.add_argument(
+    "--learning_rate", type=float, default=1e-3, help="Learning rate for optimizer"
+)
+parser.add_argument(
+    "--test_only",
+    action="store_true",
+    help="Test minimal training run by on 1 batch per forward pass",
+)
+parser.add_argument(
+    "--mixed_precision", action="store_true", help="Enable mixed precision training"
+)
 parser.add_argument(
     "--resume",
     action="store_true",
-    help="resume training from checkpoint stored in the 'save_dir'",
+    help="resume training from checkpoint stored in the '--save_dir'",
 )
 parser.add_argument(
-    "--experiment_name", type=str, default="exp_01", help="experiment name for mlflow"
+    "--experiment_name", type=str, default="exp_01", help="Experiment name for mlflow"
 )
 parser.add_argument(
-    "--model_verbosity", action="store_true", help="enable model verbosity"
+    "--model_verbosity",
+    action="store_true",
+    help="Enable model verbosity, by displaying trainable layers",
 )
 args = parser.parse_args()
+# set up mlflow
 mlflow.set_tracking_uri("sqlite:///mlflow.db")
 mlflow.set_experiment(f"task1_{args.experiment_name}")
 MODEL_NAME = "facebook/vjepa2-vitl-fpc16-256-ssv2"
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = "cuda" if torch.cuda.is_available() else "cpu"
 # create save_dir if it doesn't exist
 if not os.path.exists(args.save_dir):
     os.makedirs(args.save_dir)
 
 
-def run():
+def run(logger):
+    csv_pth = "./outputs/data_prep_split.csv"
+    if args.mixed_precision:
+        logger.info("-- Mixed Precision Training is enabled! --")
     with mlflow.start_run():
         params = {
             "epochs": args.epochs,
@@ -54,7 +81,8 @@ def run():
             "backbone": MODEL_NAME,
         }
         mlflow.log_params(params)
-        csv_pth = "./outputs/data_prep_split.csv"
+        logger.info(f"Experiment params: {params}")
+
         video_dir = args.dataset_dir
         model, processor = get_model(
             model_name=MODEL_NAME,
@@ -62,6 +90,8 @@ def run():
             verbosity=args.model_verbosity,
             device=device,
         )
+        # commanding out torch.compile for now since it's slowing things down
+        # model = torch.compile(model)
         video_transform = get_video_transform(prob=0.25)
         val_dataset = VideoDataset(csv_pth, video_dir, mode="val")
         train_dataset = VideoDataset(
@@ -81,6 +111,7 @@ def run():
             num_workers=args.num_workers,
             pin_memory=True,
         )
+        scaler = GradScaler(device)
         # only the head will be trained
         trainable = [p for p in model.parameters() if p.requires_grad]
         optimizer = torch.optim.AdamW(trainable, lr=args.learning_rate)
@@ -114,6 +145,7 @@ def run():
             for step, (batch_video, label) in tqdm(
                 enumerate(train_loader), total=len(train_loader)
             ):
+                optimizer.zero_grad()
                 batch_size = batch_video.shape[0]
                 label = label.to(device)
                 # Use processor to resize/crop frames to the model's expected size
@@ -123,11 +155,21 @@ def run():
                     inputs = inputs.unsqueeze(0)
                 else:
                     inputs = inputs.pixel_values_videos.squeeze()
-                outputs = model(inputs, labels=label)
-                loss = outputs.loss
-                # backpropagate the loss
-                optimizer.zero_grad()
-                loss.backward()
+                if args.mixed_precision:
+                    with autocast(device):
+                        outputs = model(inputs, labels=label)
+                        loss = outputs.loss
+                    scaler.scale(loss).backward()
+                    # gradient cliping
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(trainable, max_norm=1.0)
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    outputs = model(inputs, labels=label)
+                    loss = outputs.loss
+                    # backpropagate the loss
+                    loss.backward()
                 optimizer.step()
                 running_loss += loss.item()
                 logits = model(inputs).logits
@@ -137,7 +179,7 @@ def run():
                 if args.test_only:
                     break
             train_acc = train_correct / train_total
-            print(
+            logger.info(
                 f"Epoch {epoch + 1}, Train Loss {running_loss}, Train Accuracy {train_acc}"
             )
             mlflow.log_metric("train_loss", running_loss, step=epoch)
@@ -179,13 +221,44 @@ def run():
             if val_acc > best_acc:
                 best_acc = val_acc
                 torch.save(model.state_dict(), os.path.join(args.save_dir, "best.pth"))
-            print(
+            logger.info(
                 f"Epoch {epoch + 1}, Validation Loss {val_loss}, Validation Accuracy {val_acc}"
             )
             mlflow.log_metric("val_loss", val_loss, step=epoch)
             mlflow.log_metric("val_accuracy", val_acc, step=epoch)
             print()
+            print("-" * 100)
+            print()
 
 
 if __name__ == "__main__":
-    run()
+    log_file = os.path.join(args.save_dir, "output.log")
+    # Create logger
+    logger = logging.getLogger("my_logger")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False  # Avoid double logging if root has handlers
+
+    # File handler
+    file_handler = logging.FileHandler(log_file, mode="a")
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    )
+    logger.addHandler(file_handler)
+
+    # Console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    )
+    logger.addHandler(console_handler)
+    start_time = time.time()
+    # Pass logger to main function
+    run(logger)
+    end_time = time.time()
+    total_time = end_time - start_time
+    hours = total_time // 3600
+    minutes = (total_time % 3600) // 60
+    seconds = total_time % 60
+    logger.info(f"Training time: {hours} hrs {minutes} mins {seconds} secs")
