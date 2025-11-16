@@ -188,7 +188,7 @@ def run(logger):
                 train_correct += (preds == label).sum().item()
                 train_total += label.shape[0]
                 # output step metrics for every 100 steps
-                if step % 100 == 0:
+                if (step + 1) % 100 == 0:
                     logger.info(
                         f"Epoch {epoch + 1}, Step {step + 1}, Train Loss {loss.item()}, Train Accuracy {train_correct/train_total}"
                     )
