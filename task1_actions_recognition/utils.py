@@ -19,22 +19,26 @@ def get_model(model_name, num_classes=124, verbosity=False, device="cuda"):
         param.requires_grad = False
     for param in model.pooler.parameters():
         param.requires_grad = False
-    # 2. Unfreeze only the classification head
-    for param in model.classifier.parameters():
-        param.requires_grad = True
+    # 2. Replace classifier with new one (new layers have requires_grad=True by default)
+    model.classifier = torch.nn.Linear(model.config.hidden_size, num_classes).to(device)
+    # Initialize classifier weights properly
+    torch.nn.init.xavier_uniform_(model.classifier.weight)
+    torch.nn.init.zeros_(model.classifier.bias)
 
     if verbosity:
         total_params = sum(param.numel() for param in model.parameters())
+        trainable_params = sum(
+            param.numel() for param in model.parameters() if param.requires_grad
+        )
         print()
         print("-" * 100)
         print(f"Total number of parameters: {total_params}")
+        print(f"Trainable parameters: {trainable_params}")
         for name, param in model.named_parameters():
             if param.requires_grad:
                 print("Trainable:", name)
         print("-" * 100)
         print()
-    model.classifier = torch.nn.Linear(model.config.hidden_size, num_classes).to(device)
-    # this is require to overwrite the config with the
     # proper number of labels
     model.config.num_labels = num_classes
     return model, processor
@@ -57,11 +61,6 @@ class VideoDataset(Dataset):
         # get train/val inputs
         self.df = pd.read_csv(csv_pth).query(f"split == '{mode}'")
         self.split_video_dir = os.path.join(video_dir, mode)
-        self.eval_transform = v2.Compose(
-            [
-                v2.ToDtype(torch.float32, scale=True),
-            ]
-        )
         self.video_size = (
             frame_length,
             3,
@@ -81,7 +80,7 @@ class VideoDataset(Dataset):
         # video has different time length during extraction process
         try:
             assert video.shape == self.video_size, "Video shape mismatch"
-        except:
+        except AssertionError:
             pad_t = self.video_size[0] - video.shape[0]
             if pad_t <= 5:
                 # if the video is too short, we will pad it with the last (t - t_n) frames
@@ -102,8 +101,6 @@ class VideoDataset(Dataset):
                 return self.__getitem__(new_idx)
         if (self.transform is not None) and (self.mode == "train"):
             video = self.transform(video)
-        else:
-            video = self.eval_transform(video)
         return video, self.df.iloc[idx]["action_idx"]
 
 
@@ -136,7 +133,6 @@ def get_video_transform(prob=0.25):
             v2.RandomInvert(p=prob),
             v2.RandomPosterize(bits=4, p=prob),
             v2.RandomSolarize(threshold=128, p=prob),
-            v2.ToDtype(torch.float32, scale=True),
         ]
     )
     return video_transform
