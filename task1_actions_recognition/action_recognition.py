@@ -190,11 +190,11 @@ def run(logger):
                 # output step metrics for every 100 steps
                 if step % 100 == 0:
                     logger.info(
-                        f"Epoch {epoch + 1}, Step {step + 1}, Train Loss {loss.item()}, Train Accuracy {train_correct/label.shape[0]}"
+                        f"Epoch {epoch + 1}, Step {step + 1}, Train Loss {loss.item()}, Train Accuracy {train_correct/train_total}"
                     )
                 if args.test_only:
                     logger.info(
-                        f"Epoch {epoch + 1}, Step {step + 1}, Train Loss {loss.item()}, Train Accuracy {train_correct/label.shape[0]}"
+                        f"Epoch {epoch + 1}, Step {step + 1}, Train Loss {loss.item()}, Train Accuracy {train_correct/train_total}"
                     )
                     break
             train_acc = train_correct / train_total
