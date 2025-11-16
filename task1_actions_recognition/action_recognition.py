@@ -100,21 +100,27 @@ def run(logger):
         val_loader = DataLoader(
             val_dataset,
             batch_size=args.batch_size,
-            shuffle=True,
+            shuffle=False,  # Don't shuffle validation data
             num_workers=args.num_workers,
             pin_memory=True,
         )
         train_loader = DataLoader(
             train_dataset,
             batch_size=args.batch_size,
-            shuffle=False,
+            shuffle=True,  # Shuffle training data for better learning
             num_workers=args.num_workers,
             pin_memory=True,
         )
         scaler = GradScaler(device)
         # only the head will be trained
         trainable = [p for p in model.parameters() if p.requires_grad]
-        optimizer = torch.optim.AdamW(trainable, lr=args.learning_rate)
+        optimizer = torch.optim.AdamW(
+            trainable, lr=args.learning_rate, weight_decay=0.01
+        )
+        # Add learning rate scheduler for better convergence
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="max", factor=0.1, patience=2
+        )
         best_acc = 0.0
         if args.test_only:
             print("-" * 100)
@@ -132,13 +138,15 @@ def run(logger):
             checkpoint = torch.load(resume_pth)
             model.classifier.load_state_dict(checkpoint["head"])
             optimizer.load_state_dict(checkpoint["optimizer"])
+            if "scheduler" in checkpoint:
+                scheduler.load_state_dict(checkpoint["scheduler"])
             start_epoch = checkpoint["epoch"]
             print("-" * 100)
         else:
             start_epoch = 0
         for epoch in range(start_epoch, args.epochs):
             model.train()
-            running_loss = 0.0
+            train_loss = 0.0
             train_correct = 0
             train_total = 0
             print("Training ...")
@@ -159,8 +167,9 @@ def run(logger):
                     with autocast(device):
                         outputs = model(inputs, labels=label)
                         loss = outputs.loss
+                        logits = outputs.logits  # Use logits from the forward pass
                     scaler.scale(loss).backward()
-                    # gradient cliping
+                    # gradient clipping
                     scaler.unscale_(optimizer)
                     torch.nn.utils.clip_grad_norm_(trainable, max_norm=1.0)
                     scaler.step(optimizer)
@@ -168,21 +177,33 @@ def run(logger):
                 else:
                     outputs = model(inputs, labels=label)
                     loss = outputs.loss
+                    logits = outputs.logits  # Use logits from the forward pass
                     # backpropagate the loss
                     loss.backward()
-                optimizer.step()
-                running_loss += loss.item()
-                logits = model(inputs).logits
+                    # gradient clipping
+                    torch.nn.utils.clip_grad_norm_(trainable, max_norm=1.0)
+                    optimizer.step()
+                train_loss += loss.item()
                 preds = logits.argmax(-1)
                 train_correct += (preds == label).sum().item()
                 train_total += label.shape[0]
+                # output step metrics for every 100 steps
+                if step % 100 == 0:
+                    logger.info(
+                        f"Epoch {epoch + 1}, Step {step + 1}, Train Loss {loss.item()}, Train Accuracy {train_correct/label.shape[0]}"
+                    )
                 if args.test_only:
+                    logger.info(
+                        f"Epoch {epoch + 1}, Step {step + 1}, Train Loss {loss.item()}, Train Accuracy {train_correct/label.shape[0]}"
+                    )
                     break
             train_acc = train_correct / train_total
+            train_loss = train_loss / len(train_loader)
+            print()
             logger.info(
-                f"Epoch {epoch + 1}, Train Loss {running_loss}, Train Accuracy {train_acc}"
+                f"Epoch {epoch + 1}, Train Loss {train_loss}, Train Accuracy {train_acc}"
             )
-            mlflow.log_metric("train_loss", running_loss, step=epoch)
+            mlflow.log_metric("train_loss", train_loss, step=epoch)
             mlflow.log_metric("train_accuracy", train_acc, step=epoch)
             # save checkpoint
             if epoch % args.epoch_chck_point == 0:
@@ -190,9 +211,11 @@ def run(logger):
                 checkpoint = {
                     "head": model.classifier.state_dict(),
                     "optimizer": optimizer.state_dict(),
+                    "scheduler": scheduler.state_dict(),
                     "epoch": epoch,
                 }
                 torch.save(checkpoint, os.path.join(args.save_dir, "last.pth"))
+            # evaluation
             print("Processing evaluation ...")
             model.eval()
             val_correct = 0
@@ -209,8 +232,9 @@ def run(logger):
                         inputs = inputs.unsqueeze(0)
                     else:
                         inputs = inputs.pixel_values_videos.squeeze()
-                    loss = model(inputs, labels=label).loss
-                    logits = model(inputs).logits
+                    outputs = model(inputs, labels=label)
+                    loss = outputs.loss
+                    logits = outputs.logits  # Use logits from the forward pass
                     preds = logits.argmax(-1)
                     val_correct += (preds == label).sum().item()
                     val_total += label.shape[0]
@@ -218,6 +242,10 @@ def run(logger):
                     if args.test_only:
                         break
             val_acc = val_correct / val_total
+            val_loss = val_loss / len(val_loader)
+            # Update learning rate based on validation accuracy
+            scheduler.step(val_acc)
+            current_lr = optimizer.param_groups[0]["lr"]
             if val_acc > best_acc:
                 best_acc = val_acc
                 torch.save(model.state_dict(), os.path.join(args.save_dir, "best.pth"))
@@ -226,6 +254,7 @@ def run(logger):
             )
             mlflow.log_metric("val_loss", val_loss, step=epoch)
             mlflow.log_metric("val_accuracy", val_acc, step=epoch)
+            mlflow.log_metric("learning_rate", current_lr, step=epoch)
             print()
             print("-" * 100)
             print()
@@ -260,5 +289,5 @@ if __name__ == "__main__":
     total_time = end_time - start_time
     hours = total_time // 3600
     minutes = (total_time % 3600) // 60
-    seconds = total_time % 60
+    seconds = int(total_time % 60)
     logger.info(f"Training time: {hours} hrs {minutes} mins {seconds} secs")
