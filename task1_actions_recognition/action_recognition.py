@@ -79,6 +79,9 @@ def run(logger):
             "num_classes": args.num_classes,
             "save_dir": args.save_dir,
             "backbone": MODEL_NAME,
+            "mixed_precision": args.mixed_precision,
+            "resume": args.resume,
+            "experiment_name": args.experiment_name,
         }
         mlflow.log_params(params)
         logger.info(f"Experiment params: {params}")
@@ -164,7 +167,7 @@ def run(logger):
                 else:
                     inputs = inputs.pixel_values_videos.squeeze()
                 if args.mixed_precision:
-                    with autocast(device):
+                    with autocast(device, dtype=torch.bfloat16):
                         outputs = model(inputs, labels=label)
                         loss = outputs.loss
                         logits = outputs.logits  # Use logits from the forward pass
