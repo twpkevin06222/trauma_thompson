@@ -212,7 +212,7 @@ def run(logger):
                     "head": model.classifier.state_dict(),
                     "optimizer": optimizer.state_dict(),
                     "scheduler": scheduler.state_dict(),
-                    "epoch": epoch,
+                    "epoch": epoch + 1,
                 }
                 torch.save(checkpoint, os.path.join(args.save_dir, "last.pth"))
             # evaluation
