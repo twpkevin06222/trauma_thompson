@@ -17,7 +17,7 @@ Full description of the task is available from the official [website](https://t3
 
 ## Disclaimer 
 This repository is intended solely for **personal practice and experimentation**. <br> 
-The implementations within serve as a test ground for exploring and reproducing state-of-the-art models, algorithms, and training workflows for medical related videos. 
+The implementations within serve as a test ground for exploring and reproducing state-of-the-art models, algorithms, and training workflows for medical related videos and images. 
 <br>
 <br>
 Please note:
