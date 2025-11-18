@@ -146,7 +146,7 @@ def write_predictions_on_video(
             ):
                 class_name = idx2cls[pred_idx.item()]
                 prob_value = prob.item()
-                text_lines.append(f"{i+1}. {class_name}: {prob_value:.3f}")
+                text_lines.append(f"{i + 1}. {class_name}: {prob_value:.3f}")
 
             # Draw predictions on frame
             y_offset = 30
@@ -230,7 +230,7 @@ def inference_single_video(
         zip(start_frame_list, end_frame_list)
     ):
         print(
-            f"Processing batch: {i+1}/{batch} clip from frame {batch_start_frame} to frame {batch_end_frame} .."
+            f"Processing batch: {i + 1}/{batch} clip from frame {batch_start_frame} to frame {batch_end_frame} .."
         )
         frames = []
         for frame_idx in range(batch_start_frame, batch_end_frame):
