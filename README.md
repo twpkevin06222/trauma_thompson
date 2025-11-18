@@ -48,14 +48,35 @@ uv pip install requirements.txt
 ## Models
 |        | Model    | Task                 | Source      |
 |--------|----------|----------------------|-------------|
-| Task 1 | VJEPA2   | Video Classification | [Meta FAIR](https://github.com/facebookresearch/vjepa2)|
+| Task 1 | V-JEPA2   | Video Classification | [Meta FAIR](https://github.com/facebookresearch/vjepa2)|
 | Task 2 | YOLOv11n | Object Detection     | [Ultralytics](https://docs.ultralytics.com/modes/track/)|
 | Task 3 | YOLOv11n | Object Detection     | [Ultralytics](https://docs.ultralytics.com/tasks/detect/)|
 | Task 5 | Qwen3-VL | VQA                  | [Unsloth](https://docs.unsloth.ai/models/qwen3-vl-how-to-run-and-fine-tune)|
 
 # Results
 ## Task 1 - Action Recognition 
-[ Brewing ... ]
+Ultilised V-JEPA2 as frozen backbone for video feature extraction and fine-tune a classifier head for video classification task. <br>
+Due to time constraint and computation cost, hyperparameter optimisation for this task could be better.  <br>
+<br>
+### Training parameters are as below:
+```
+epochs: 20
+batch_size: 64
+num_workers: 4
+learning_rate: 0.0001
+optimiser: AdamW
+num_classes: 124
+pretrained_model_weights: facebook/vjepa2-vitl-fpc16-256-ssv2 
+```
+|        | Value    | 
+|--------|----------|
+| Training Time | approx 20 hours | 
+| Best Validation Accuracy | 50.06% |
+<br>
+<p align="center">
+<img src="assets/task1_example.gif" width=800, height=500>
+</p>
+
 ## Task 2 - Hand Tracking
 Utilised [Ultralytics](https://docs.ultralytics.com/modes/track/) YOLOv11n for object detection training and infer using Ultralytics's object tracking method. The provided dataset consisted of annotations that are not suitable for training (refer to task2 subfolder EDA section for more info) and was subsequently removed from the training and validation set. <br> 
 For some results, the training results for single class object detection is not great.
