@@ -2,7 +2,8 @@
 Trauma TeleHelper for Operational Medical Procedure Support and Offline Network <br>
 for more info please refer to the official website of the grand challenge: [link](https://t3challenge25.grand-challenge.org/t3challenge25/) <br>
 <br>
-**Please Refer to DISCLAIMER section for the intention of this
+**Please Refer to DISCLAIMER section for the intention of this repo
+
 ## Objective
 The Trauma THOMPSON Challenge 2025 aims to drive innovation in AI-assisted remote instruction systems that can provide real-time guidance to frontline providers during high-stakes and lifesaving procedures. The dataset is available for download with the consent of authors [here](https://t3challenge25.grand-challenge.org/data/). I by all means have no rights nor am I authorised to distribute the data or expose the dataset.
 
